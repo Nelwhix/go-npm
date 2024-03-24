@@ -3,18 +3,21 @@
 "use strict"
 
 const request = require('request'),
+    util = require('util'),
     path = require('path'),
     tar = require('tar'),
     zlib = require('zlib'),
     mkdirp = require('mkdirp'),
     fs = require('fs'),
     exec = require('child_process').exec;
+    fetch = require('node-fetch');
 
 // Mapping from Node's `process.arch` to Golang's `$GOARCH`
 const ARCH_MAPPING = {
     "ia32": "386",
     "x64": "amd64",
-    "arm": "arm"
+    "arm": "arm",
+    "arm64": "arm64"
 };
 
 // Mapping between Node's `process.platform` to Golang's 
@@ -28,9 +31,9 @@ const PLATFORM_MAPPING = {
 function getInstallationPath(callback) {
 
     // `npm bin` will output the path where binary files should be installed
-    exec("npm bin", function(err, stdout, stderr) {
-
+    exec("npm bin", (err, stdout, stderr) => {
         let dir =  null;
+
         if (err || stderr || !stdout || stdout.length === 0)  {
 
             // We couldn't infer path from `npm bin`. Let's try to get it from
@@ -46,29 +49,29 @@ function getInstallationPath(callback) {
         }
 
         mkdirp.sync(dir);
-
-        callback(null, dir);
+        callback(null, dir)
     });
 
 }
 
-function verifyAndPlaceBinary(binName, binPath, callback) {
-    if (!fs.existsSync(path.join(binPath, binName))) return callback(`Downloaded binary does not contain the binary specified in configuration - ${binName}`);
+function verifyAndPlaceBinary(binName, binPath) {
+    if (!fs.existsSync(path.join(binPath, binName))) {
+        throw new Error(`Downloaded binary does not contain the binary specified in configuration - ${binName}`);
+    }
 
     getInstallationPath(function(err, installationPath) {
-        if (err) return callback("Error getting binary installation path from `npm bin`");
+        if (err) {
+            throw new Error("Error getting binary installation path from `npm bin`");
+        }
 
         // Move the binary file
         fs.renameSync(path.join(binPath, binName), path.join(installationPath, binName));
-
-        callback(null);
     });
 }
 
 function validateConfiguration(packageJson) {
-
     if (!packageJson.version) {
-        return "'version' property must be specified";
+        return "'version' property is required";
     }
 
     if (!packageJson.goBinary || typeof(packageJson.goBinary) !== "object") {
@@ -76,20 +79,16 @@ function validateConfiguration(packageJson) {
     }
 
     if (!packageJson.goBinary.name) {
-        return "'name' property is necessary";
+        return "'name' property is required";
     }
 
     if (!packageJson.goBinary.path) {
-        return "'path' property is necessary";
+        return "'path' property is required";
     }
 
     if (!packageJson.goBinary.url) {
         return "'url' property is required";
     }
-
-    // if (!packageJson.bin || typeof(packageJson.bin) !== "object") {
-    //     return "'bin' property of package.json must be defined and be an object";
-    // }
 }
 
 function parsePackageJson() {
@@ -117,14 +116,12 @@ function parsePackageJson() {
         return
     }
 
-    // We have validated the config. It exists in all its glory
     let binName = packageJson.goBinary.name;
     let binPath = packageJson.goBinary.path;
     let url = packageJson.goBinary.url;
     let version = packageJson.version;
-    if (version[0] === 'v') version = version.substr(1);  // strip the 'v' if necessary v0.0.1 => 0.0.1
+    if (version[0] === 'v') version = version.substr(1);
 
-    // Binary name on Windows has .exe suffix
     if (process.platform === "win32") {
         binName += ".exe"
     }
@@ -152,30 +149,35 @@ function parsePackageJson() {
  *  See: https://docs.npmjs.com/files/package.json#bin
  */
 const INVALID_INPUT = "Invalid inputs";
-function install(callback) {
+function install() {
+    const options = parsePackageJson();
+    if (!options) {
+        throw new Error(INVALID_INPUT);
+    }
 
-    let opts = parsePackageJson();
-    if (!opts) return callback(INVALID_INPUT);
-
-    mkdirp.sync(opts.binPath);
-    let ungz = zlib.createGunzip();
-    let untar = tar.Extract({path: opts.binPath});
-
-    ungz.on('error', callback);
-    untar.on('error', callback);
+    mkdirp.sync(options.binPath);
+    const ungz = zlib.createGunzip();
+    const untar = tar.Extract({path: options.binPath});
 
     // First we will Un-GZip, then we will untar. So once untar is completed,
     // binary is downloaded into `binPath`. Verify the binary and call it good
-    untar.on('end', verifyAndPlaceBinary.bind(null, opts.binName, opts.binPath, callback));
+    untar.on('end', verifyAndPlaceBinary(options.binName, options.binPath));
 
-    console.log("Downloading from URL: " + opts.url);
-    let req = request({uri: opts.url});
-    req.on('error', callback.bind(null, "Error downloading from URL: " + opts.url));
-    req.on('response', function(res) {
-        if (res.statusCode !== 200) return callback("Error downloading binary. HTTP Status Code: " + res.statusCode);
+    console.log("Downloading from URL: " + options.url);
 
-        req.pipe(ungz).pipe(untar);
-    });
+    fetch(options.url)
+        .then((res) => {
+            if (!res.ok) {
+                throw new Error(`Error downloading binary. HTTP Status Code: ${res.status}`)
+            }
+
+            res.body
+                .pipe(ungz)
+                .pipe(untar)
+        })
+        .catch((err) => {
+            console.error(`Error downloading from URL: ${options.url} ${err}`)
+        })
 }
 
 function uninstall(callback) {
@@ -194,9 +196,7 @@ function uninstall(callback) {
     });
 }
 
-
-// Parse command line arguments and call the right method
-let actions = {
+const actions = {
     "install": install,
     "uninstall": uninstall
 };
@@ -209,14 +209,13 @@ if (argv && argv.length > 2) {
         process.exit(1);
     }
 
-    actions[cmd](function(err) {
-        if (err) {
-            console.error(err);
-            process.exit(1);
-        } else {
-            process.exit(0);
-        }
-    });
+    try {
+        actions[cmd]()
+        process.exit(0)
+    } catch (err) {
+        console.error(err);
+        process.exit(1)
+    }
 }
 
 
