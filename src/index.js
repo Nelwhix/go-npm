@@ -2,9 +2,7 @@
 
 "use strict"
 
-const request = require('request'),
-    util = require('util'),
-    path = require('path'),
+const path = require('path'),
     tar = require('tar'),
     zlib = require('zlib'),
     mkdirp = require('mkdirp'),
@@ -157,7 +155,7 @@ function install() {
 
     mkdirp.sync(options.binPath);
     const ungz = zlib.createGunzip();
-    const untar = tar.Extract({path: options.binPath});
+    const untar = tar.extract({path: options.binPath});
 
     // First we will Un-GZip, then we will untar. So once untar is completed,
     // binary is downloaded into `binPath`. Verify the binary and call it good
@@ -180,11 +178,12 @@ function install() {
         })
 }
 
-function uninstall(callback) {
-
-    let opts = parsePackageJson();
+function uninstall() {
+    const options = parsePackageJson();
     getInstallationPath(function(err, installationPath) {
-        if (err) callback("Error finding binary installation directory");
+        if (err) {
+            throw new Error("Error finding binary installation directory");
+        }
 
         try {
             fs.unlinkSync(path.join(installationPath, opts.binName));

@@ -1,21 +1,20 @@
 {
-  "name": "go-npm",
-  "version": "0.0.1",
+  "name": "golang-npm",
+  "version": "0.0.4",
   "description": "Distribute and install Go binaries via NPM",
   "main": "index.js",
   "bin": {
-    "go-npm": "./bin/index.js"
+    "golang-npm": "./bin/index.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prepublish": "node_modules/babel-cli/bin/babel.js src --out-dir bin --presets es2015"
+    "prepublish": "npx babel src -d bin --presets=@babel/preset-env"
   },
   "author": "Nelson Isioma <nelsonisioma1@gmail.com>",
   "license": "Apache-2.0",
   "dependencies": {
     "mkdirp": "^3.0.1",
     "node-fetch": "^2.7.0",
-    "request": "^2.81.0",
     "tar": "^6.2.1"
   },
   "repository": {
@@ -24,8 +23,8 @@
   },
   "homepage": "https://github.com/nelwhix/go-npm",
   "devDependencies": {
-    "babel-cli": "^6.24.1",
-    "babel-core": "^6.25.0",
-    "babel-preset-es2015": "^6.24.1"
+    "@babel/cli": "^7.24.1",
+    "@babel/core": "^7.24.3",
+    "@babel/preset-env": "^7.24.3"
   }
 }
