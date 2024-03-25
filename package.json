@@ -1,6 +1,6 @@
 {
   "name": "go-npm",
-  "version": "0.1.8",
+  "version": "0.0.1",
   "description": "Distribute and install Go binaries via NPM",
   "main": "index.js",
   "bin": {
@@ -10,7 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "prepublish": "node_modules/babel-cli/bin/babel.js src --out-dir bin --presets es2015"
   },
-  "author": "Sanath Kumar Ramesh <dayanandasaraswati@gmail.com>",
+  "author": "Nelson Isioma <nelsonisioma1@gmail.com>",
   "license": "Apache-2.0",
   "dependencies": {
     "mkdirp": "^3.0.1",
@@ -20,9 +20,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/sanathkr/go-npm.git"
+    "url": "https://github.com/nelwhix/go-npm.git"
   },
-  "homepage": "https://github.com/sanathkr/go-npm",
+  "homepage": "https://github.com/nelwhix/go-npm",
   "devDependencies": {
     "babel-cli": "^6.24.1",
     "babel-core": "^6.25.0",
