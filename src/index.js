@@ -2,13 +2,15 @@
 
 "use strict"
 
-const path = require('path'),
+const request = require('request'),
+    path = require('path'),
     tar = require('tar'),
     zlib = require('zlib'),
     mkdirp = require('mkdirp'),
     fs = require('fs'),
-    exec = require('child_process').exec;
-    fetch = require('node-fetch');
+    exec = require('child_process').exec,
+    fetch = require('node-fetch')
+    
 
 // Mapping from Node's `process.arch` to Golang's `$GOARCH`
 const ARCH_MAPPING = {
@@ -26,44 +28,55 @@ const PLATFORM_MAPPING = {
     "freebsd": "freebsd"
 };
 
+// to get the path where npm binaries are stored
 function getInstallationPath(callback) {
-
-    // `npm bin` will output the path where binary files should be installed
-    exec("npm bin", (err, stdout, stderr) => {
-        let dir =  null;
-
-        if (err || stderr || !stdout || stdout.length === 0)  {
-
-            // We couldn't infer path from `npm bin`. Let's try to get it from
-            // Environment variables set by NPM when it runs.
-            // npm_config_prefix points to NPM's installation directory where `bin` folder is available
-            // Ex: /Users/foo/.nvm/versions/node/v4.3.0
-            let env = process.env;
-            if (env && env.npm_config_prefix) {
-                dir = path.join(env.npm_config_prefix, "bin");
-            }
+    exec("npm --v", (err, stdout, stderr) => {
+        const npmVersion = parseFloat(stdout.trim())
+        
+        // npm bin was deprecated after v9 https://github.blog/changelog/2022-10-24-npm-v9-0-0-released/
+        if (npmVersion < 9) {
+            exec("npm bin", (err, stdout, stderr) => {
+                let dir =  null;
+        
+                if (err || stderr || !stdout || stdout.length === 0)  {
+                  throw new Error('Could not get installation path')
+                } else {
+                    dir = stdout.trim();
+                }
+     
+                mkdirp.sync(dir);
+                callback(null, dir)
+            });
         } else {
-            dir = stdout.trim();
+            exec("npm prefix -g", (err, stdout, stderr) => {
+                let dir =  null;
+        
+                if (err || stderr || !stdout || stdout.length === 0)  {
+                  throw new Error('Could not get installation path')
+                } else {
+                    dir = stdout.trim() + "/bin";
+                }
+     
+                mkdirp.sync(dir);
+                callback(null, dir)
+            });
         }
-
-        mkdirp.sync(dir);
-        callback(null, dir)
-    });
-
+    })
 }
 
-function verifyAndPlaceBinary(binName, binPath) {
+function verifyAndPlaceBinary(binName, binPath, callback) {
     if (!fs.existsSync(path.join(binPath, binName))) {
         throw new Error(`Downloaded binary does not contain the binary specified in configuration - ${binName}`);
     }
 
     getInstallationPath(function(err, installationPath) {
-        if (err) {
+        if (err) { 
             throw new Error("Error getting binary installation path from `npm bin`");
         }
 
         // Move the binary file
         fs.renameSync(path.join(binPath, binName), path.join(installationPath, binName));
+        callback();
     });
 }
 
@@ -147,7 +160,7 @@ function parsePackageJson() {
  *  See: https://docs.npmjs.com/files/package.json#bin
  */
 const INVALID_INPUT = "Invalid inputs";
-function install() {
+function install(callback) {
     const options = parsePackageJson();
     if (!options) {
         throw new Error(INVALID_INPUT);
@@ -155,43 +168,37 @@ function install() {
 
     mkdirp.sync(options.binPath);
     const ungz = zlib.createGunzip();
-    const untar = tar.extract({path: options.binPath});
+    const untar = tar.x({cwd: options.binPath});
+
 
     // First we will Un-GZip, then we will untar. So once untar is completed,
     // binary is downloaded into `binPath`. Verify the binary and call it good
-    untar.on('end', verifyAndPlaceBinary(options.binName, options.binPath));
+    untar.on('end', () => {
+        verifyAndPlaceBinary(options.binName, options.binPath, callback)
+    });
 
     console.log("Downloading from URL: " + options.url);
 
     fetch(options.url)
         .then((res) => {
             if (!res.ok) {
-                throw new Error(`Error downloading binary. HTTP Status Code: ${res.status}`)
+                throw new Error("Error downloading binary. HTTP Status Code: " + res.status);
             }
 
-            res.body
-                .pipe(ungz)
-                .pipe(untar)
-        })
-        .catch((err) => {
-            console.error(`Error downloading from URL: ${options.url} ${err}`)
+            res.body.pipe(ungz).pipe(untar)
         })
 }
 
-function uninstall() {
+function uninstall(callback) {
     const options = parsePackageJson();
+
     getInstallationPath(function(err, installationPath) {
         if (err) {
             throw new Error("Error finding binary installation directory");
         }
 
-        try {
-            fs.unlinkSync(path.join(installationPath, opts.binName));
-        } catch(ex) {
-            // Ignore errors when deleting the file.
-        }
-
-        return callback(null);
+        fs.unlinkSync(path.join(installationPath, options.binName));
+        callback()
     });
 }
 
@@ -200,17 +207,18 @@ const actions = {
     "uninstall": uninstall
 };
 
-let argv = process.argv;
+const argv = process.argv;
 if (argv && argv.length > 2) {
-    let cmd = process.argv[2];
+    const cmd = process.argv[2];
     if (!actions[cmd]) {
         console.log("Invalid command to go-npm. `install` and `uninstall` are the only supported commands");
         process.exit(1);
     }
 
     try {
-        actions[cmd]()
-        process.exit(0)
+        actions[cmd](() => {
+            process.exit(0);
+        })
     } catch (err) {
         console.error(err);
         process.exit(1)
