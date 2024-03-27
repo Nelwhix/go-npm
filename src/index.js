@@ -2,8 +2,7 @@
 
 "use strict"
 
-const request = require('request'),
-    path = require('path'),
+const path = require('path'),
     tar = require('tar'),
     zlib = require('zlib'),
     mkdirp = require('mkdirp'),
@@ -35,7 +34,7 @@ function getInstallationPath(callback) {
         
         // npm bin was deprecated after v9 https://github.blog/changelog/2022-10-24-npm-v9-0-0-released/
         if (npmVersion < 9) {
-            exec("npm bin", (err, stdout, stderr) => {
+            exec("npm bin -g", (err, stdout, stderr) => {
                 let dir =  null;
         
                 if (err || stderr || !stdout || stdout.length === 0)  {

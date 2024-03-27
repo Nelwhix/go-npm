@@ -1,109 +1,159 @@
-## Go NPM
-### Distribute cross-platform Go binaries via NPM
+## Golang NPM
+A package to publish go binaries via npm.
 
-Applications written in Golang are portable - you can easily cross-compile binaries that work on Windows, Mac, and Linux. But how do you distribute the binaries to customers? When you publish new releases, how do they update the binary? 
-
-**Use NPM to distribute cross-platform Go binaries**
-
-## Kidding me! Why NPM?
+## Why NPM?
 * **Cross-platform**: NPM is the only popular package manager that works cross-platform. 
 * **Lower barier to entry**: Most developers have NPM installed already. 
 * **Pain free publishing**: It just takes one command to publish - `npm publish`
 * **Dead simple install & update story**: `npm install/update -g your-awesome-app`
 * **Adds $PATH**: NPM will automatically add your binary location to $PATH and generate .cmd file for Windows. Your app just works after installation! 
 
-## Okay, tell me how?
-### 1. Publish your binaries
-Setup your Go application to compile and publish binaries to a file server. This could be Github Releases or Amazon S3 or even Dropbox. All you need is a link.
+## Motivation
+This package is a fork of [go-npm](https://github.com/sanathkr/go-npm). This fork adds support for installation on arm64 architectures and removes all deprecated packages. Big thanks to the previous [author](https://github.com/sanathkr) and help save his [son](https://x.com/sanathkr_/status/1337227367102566403?s=20)
 
-I like to use [GoReleaser](https://github.com/goreleaser/goreleaser) to setup by release process. You create a simple YAML configuration file like this and run `goreleaser` CLI to publish binaries for various platform/architecture combination to Github:
+## Usage
+NB: This package is for publishing global binaries. i.e. binaries installed with `-g` flag. 
+
+Start by creating a package.json
+```bash
+  npm init
+```
+Follow the prompts and fill them with your own preferred fields. Mine looks like:
+
+```json
+  {
+  "name": "@nelwhix/goserve",
+  "version": "1.1.9",
+  "description": "Golang CLI for starting blazing fast server for your local sites",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "golang-npm install",
+    "preuninstall": "golang-npm uninstall",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nelwhix/goserve.git"
+  },
+  "keywords": [
+    "cli",
+    "dev-server",
+    "go"
+  ],
+  "author": "Nelson Isioma",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Nelwhix/goserve/issues"
+  },
+  "homepage": "https://github.com/nelwhix/goserve#readme",
+  "dependencies": {
+    "golang-npm": "^0.0.5"
+  },
+    //   Specify details about your binary
+  "goBinary": {
+    //   Name of the binary file and what npm will alias as
+    "name": "goserve",
+    // Where to add the binary
+    "path": "./bin",
+    // Dynamic URL pointing to where the compressed binary exists based on version, platform, and the processor type (amd64, arm, and more)
+    "url": "https://github.com/nelwhix/goserve/releases/download/v{{version}}/goserve_{{version}}_{{platform}}_{{arch}}.tar.gz"
+  }
+}
 
 ```
-# .goreleaser.yml
-# Build customization
+
+You would notice there are two commands in the scripts section
+```json
+  "scripts": {
+    "postinstall": "golang-npm install",
+    "preuninstall": "golang-npm uninstall",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+```
+
+What postinstall does is that after installing the package it will pull the binary from where you saved it Github or Amazon S3,
+
+preuninstall removes the binary from the bin directory before NPM uninstalls the package.
+
+To confirm if everything is working properly up to this point. You run:
+
+```bash
+  npm i golang-npm
+```
+
+This will create a node_modules folder, add it to your .gitignore file, to avoid pushing it to Github.
+
+For our CLI tool to work on all operating systems, we need to build a binary that works for each using Goreleaser
+
+To install GoReleaser visit this [link](https://goreleaser.com/install/).
+
+### Generating Binaries
+Before we can build our OS-specific binaries we need the following:
+
+- Github/Gitlab token(based on where you want your binary to reside)
+- Initialize version control (git)
+- Git basic commands
+
+Creating our token
+
+- Create your token [here](https://github.com/settings/tokens)
+- Set the Github token as an environment variable
+
+```bash
+  export GITHUB_TOKEN=<YOUR GITHUB TOKEN>
+```
+
+**Tagging a release**
+
+We need to create a tag and push it as GoReleaser will use the latest Git tag of your repo.
+
+```bash
+  git tag -a <version> <commit> -m <release label>
+```
+
+
+Define goreleaser config and define the arch and operating systems you want to build for.
+
+```
+In your .goreleaser.yml file
+
 builds:
-  - binary: drum-roll
+  - binary: <Your CLI name>
     goos:
       - windows
       - darwin
       - linux
     goarch:
       - amd64
+      - arm64
 ```
 
-`go-npm` will pull the appropriate binary for the platform & architecture where the package is being installed.
-
-### 2. Create a package.json file for your NPM app
-To publish to NPM, you need to create a `package.json` file. You give your application a name, link to Readme, Github repository etc, and more importantly add `go-npm` as a dependency. You can create this file in an empty directory in your project or in a separate Git repository altogether. It is your choice.
-
-**Create package.json**
-
-`$ npm init`
-
-Answer the questions to create an initial package.json file
-
-**Add go-npm dependency**
-
-From the directory containing package.json file, do
-
-`$ npm install go-npm --save`
-
-This will install go-npm under to your package.json file. It will also create a `node_modules` directory where the `go-npm` package is downloaded. You don't need this directory since you are only going to publish the module and not consume it yourself. Let's go ahead and delete it.
-
-`$ rm -r node_modules`
-
-**Add postinstall and preuninstall scripts**
-Here is the magic: You ask to run `go-npm install` after it completes installing your package. This will pull down binaries from Github or Amazon S3 and install in NPM's `bin` directory. Binaries under bin directory are immediately available for use in your Terminal.
-
-Edit `package.json` file and add the following:
-```
-{
-    "postinstall": "go-npm install",
-    "preuninstall": "go-npm uninstall",
-}
+Run goreleaser
+```bash
+  goreleaser release
 ```
 
-`go-npm uninstall` simply deletes the binary from `bin` directory before NPM uninstalls your package.
+The above command will publish your CLI to Github or Gitlab based on where your repo is hosted.
 
-**Configure your binary path**
 
-You need to tell `go-npm` where to download the binaries from, and where to install them. Edit `package.json` file and add the following configuration.
+Next, this CLI needs to be published to npm.
 
+Before you can do that ensure you have the following done:
+
+- An account on npmjs.com
+- Login to account using npm cli 
+```bash 
+  npm login 
 ```
-"goBinary": {
-      "name": "command-name",
-      "path": "./bin",
-      "url": "https://github.com/user/my-go-package/releases/download/v{{version}}/myGoPackage_{{version}}_{{platform}}_{{arch}}.tar.gz"
+
+And now let's publish
+
+```bash
+npm publish
 ```
 
-* *name*: Name of the command users will use to run your binary. 
-* *path*: Temporary path where binaries will be downloaded to
-* *url*: HTTP Web server where binaries are hosted.
+You just got your package published~
+Things you should note
 
-Following variables are available to customize the URL:
-* `{{version}}`: Version number read from  `package.json` file. When you publish your package to NPM, it will use this version number. Ex: 0.0.1
-* `{{platform}}`: `$GOOS` value for the platform
-* `{{arch}}`: `$GOARCH` value for the architecture
-
-If you use `goreleaser` to publish your modules, it will automatically set the right architecture & platform in your URL.
-
-**Publish to NPM**
-
-All that's left now is publish to NPM. As I promised before, just one command
-
-`$ npm publish`
-
-### 3. Distribute to users
-
-To install:
-
-`npm install -g your-app-name`
-
-To Update:
-
-`npm update -g your-app-name`
-
-
----
-
-With ❤️ to the community by [Sanath Kumar Ramesh](http://twitter.com/sanathkr_)
+- For package documentation, update your repo readme and update the version on your package.json for npm to pick-up.
+- If you need to make any changes at all even a typo fix, you will have to update the npm version on package.json to update the package.
