@@ -74,6 +74,7 @@ You would notice there are two commands in the scripts section
 What postinstall does is that after installing the package it will pull the binary from where you saved it Github or Amazon S3,
 
 preuninstall removes the binary from the bin directory before NPM uninstalls the package.
+NB: sadly npm v7+ no longer supports uninstall scripts so `preuninstall` won't work. Reason [here](https://docs.npmjs.com/cli/v10/using-npm/scripts#a-note-on-a-lack-of-npm-uninstall-scripts)
 
 To confirm if everything is working properly up to this point. You run:
 
